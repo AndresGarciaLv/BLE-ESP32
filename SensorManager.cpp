@@ -33,22 +33,30 @@ SensorData SensorManager::read() {
 
 String SensorManager::toJson(const SensorData& data, bool wifiConnected) {
   StaticJsonDocument<512> doc;
-  doc["p"] = data.pressure;
-  doc["b"] = data.bpm;
+  doc["cmd"] = "save";  // Se puede parametrizar más adelante
 
-  JsonObject m = doc.createNestedObject("m");
+  JsonObject d = doc.createNestedObject("data");
+
+  JsonObject p = d.createNestedObject("p");
+  p["pc"] = data.pressure;
+  p["gr"] = data.pressure + 160; // Simulado, puedes cambiarlo
+
+  d["b"] = data.bpm;
+
+  JsonObject m = d.createNestedObject("m");
   m["x"] = round2(data.ax);
   m["y"] = round2(data.ay);
   m["z"] = round2(data.az);
 
-  JsonObject g = doc.createNestedObject("g");
+  JsonObject g = d.createNestedObject("g");
   g["x"] = round2(data.gx);
   g["y"] = round2(data.gy);
   g["z"] = round2(data.gz);
 
-  doc["wifi"] = wifiConnected;
+  d["w"] = wifiConnected;
 
   String out;
   serializeJson(doc, out);
   return out;
 }
+

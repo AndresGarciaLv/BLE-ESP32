@@ -3,6 +3,12 @@
 void WebSocketManager::connect(const char* url) {
   if (!connected) {
     connected = client.connect(url);
+    if (connected) {
+      Serial.println("✅ WebSocket conectado correctamente a:");
+      Serial.println(url);
+    } else {
+      Serial.println("❌ Error al conectar WebSocket.");
+    }
   }
 }
 

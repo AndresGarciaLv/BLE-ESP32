@@ -1,8 +1,30 @@
 #include "WiFiManager.h"
 
 void WiFiManagerCustom::begin() {
-  WiFi.begin();
+  const char* ssid = "Mega_2.4G_E09C";
+  const char* pass = "LffiPR39";
+
+  WiFi.begin(ssid, pass);
+  Serial.print("🔌 Conectando a WiFi");
+
+  for (int i = 0; i < 20; i++) {
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\n✅ WiFi conectado");
+      wifiConnected = true;
+      bleOnly = false;
+      if (notifyCallback) notifyCallback("{\"wifiStatus\":\"ok\"}");
+      return;
+    }
+    Serial.print(".");
+    delay(500);
+  }
+
+  Serial.println("\n❌ Falló la conexión WiFi");
+  wifiConnected = false;
+  bleOnly = true;
+  if (notifyCallback) notifyCallback("{\"wifiStatus\":\"fail\"}");
 }
+
 
 void WiFiManagerCustom::connectToWiFi(const char* ssid, const char* pass) {
   WiFi.begin(ssid, pass);
