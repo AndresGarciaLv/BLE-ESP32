@@ -2,6 +2,7 @@
 #define WEBSOCKET_MANAGER_H
 
 #include <ArduinoWebsockets.h>
+#include <functional>
 
 using namespace websockets;
 
@@ -12,9 +13,13 @@ public:
   void poll();
   bool isAvailable() const;
 
+  // Nuevo: asignar callback para recibir mensajes
+  void setOnMessageCallback(std::function<void(const String&)> cb);
+
 private:
   WebsocketsClient client;
   bool connected = false;
+  std::function<void(const String&)> messageCallback;
 };
 
 #endif

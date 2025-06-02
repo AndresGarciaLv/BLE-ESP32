@@ -16,25 +16,37 @@ private:
 
 class ServerCallbacks : public BLEServerCallbacks {
 public:
-  ServerCallbacks(bool* deviceConnected) : deviceConnected(deviceConnected) {}
+  ServerCallbacks(bool* deviceConnected, BLECharacteristic* characteristic)
+    : deviceConnected(deviceConnected), pCharacteristic(characteristic) {}
 
   void onConnect(BLEServer*) override {
     *deviceConnected = true;
+    Serial.println("✅ BLE conectado: dispositivo enlazado :).");
   }
 
   void onDisconnect(BLEServer*) override {
     *deviceConnected = false;
+    Serial.println("❌ BLE desconectado: esperando nuevo dispositivo...");
+
+    // Enviar estado BLE a la app si aún está permitido
+    if (pCharacteristic) {
+      String msg = "{\"bleStatus\":\"disconnected\"}";
+      pCharacteristic->setValue(msg.c_str());
+      pCharacteristic->notify();
+      delay(100);
+    }
+
     BLEDevice::startAdvertising();
   }
 
 private:
   bool* deviceConnected;
+  BLECharacteristic* pCharacteristic;
 };
 
 void BLEManager::begin() {
-  BLEDevice::init("PelucheBLE");
+  BLEDevice::init("Peluche BLE");
   BLEServer* server = BLEDevice::createServer();
-  server->setCallbacks(new ServerCallbacks(&deviceConnected));
 
   BLEService* service = server->createService(SERVICE_UUID);
   pCharacteristic = service->createCharacteristic(
@@ -44,12 +56,20 @@ void BLEManager::begin() {
 
   pCharacteristic->addDescriptor(new BLE2902());
   pCharacteristic->setCallbacks(new CharacteristicCallbacks(commandParser));
+
+  server->setCallbacks(new ServerCallbacks(&deviceConnected, pCharacteristic));
+
   service->start();
   BLEDevice::startAdvertising();
 }
 
 void BLEManager::sendFragmented(const String& message) {
-  const int maxPayloadSize = 17; // 17 + 1 (por índice "#x|") = 20 máx para BLE
+  if (!deviceConnected) {
+    Serial.println("⚠️ BLE desconectado, no se enviará fragmento.");
+    return;
+  }
+
+  const int maxPayloadSize = 17;
   int index = 1;
   int start = 0;
   int len = message.length();
@@ -60,13 +80,18 @@ void BLEManager::sendFragmented(const String& message) {
   Serial.println("== FRAGMENTANDO JSON PARA BLE =====");
 
   while (start < len) {
+    // 🛑 Detener envío si se desconecta en medio del fragmentado
+    if (!deviceConnected) {
+      Serial.println("⛔ BLE se desconectó a mitad del envío. Abortando fragmentación.");
+      break;
+    }
+
     int end = start + maxPayloadSize;
     if (end > len) end = len;
 
-    // ⚠️ Aseguramos no cortar dentro de una palabra
     while (end < len && message.charAt(end) != ',' && message.charAt(end) != '}') {
       end--;
-      if (end <= start) break; // safety fallback
+      if (end <= start) break;
     }
 
     String payload = message.substring(start, end);
@@ -87,8 +112,6 @@ void BLEManager::sendFragmented(const String& message) {
 
   Serial.println("========= FRAGMENTACIÓN LISTA =======");
 }
-
-
 
 
 void BLEManager::setCommandParser(CommandParser* parser) {

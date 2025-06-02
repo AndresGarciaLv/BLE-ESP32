@@ -20,6 +20,10 @@ public:
 
 private:
   MPU9250_asukiaaa imu;
+
+  int readFSRAveraged() const;
+  int readPressurePercentage() const;
+  float calculateGrams(int percentage) const;
 };
 
 #endif

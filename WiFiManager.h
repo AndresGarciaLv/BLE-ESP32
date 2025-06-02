@@ -3,13 +3,16 @@
 
 #include <WiFi.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 
 class WiFiManagerCustom {
 public:
   void begin();
-  void connectToWiFi(const char* ssid, const char* pass);
+  void connectToWiFi(const char* ssid, const char* pass = nullptr);
   void disconnectWiFi();
   void scanNetworks();
+  void tryReconnectLastWiFi();  // reconectar automáticamente
+
   bool isConnected() const;
   bool isBLEOnly() const;
   bool isScanning() const;
