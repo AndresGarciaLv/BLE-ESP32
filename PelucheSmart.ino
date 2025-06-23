@@ -76,20 +76,27 @@ void handleWebSocketCommand(const String& msg) {
 void setup() {
   Serial.begin(115200);
 
+  // Configurar relaciones entre componentes
+  wifiManager.setBLEManager(&bleManager);
+  wifiManager.setSendDataControl([](bool active) {
+    sendData = active;
+  });
+  wifiManager.setNotifyCallback([](const String& msg) {
+    bleManager.sendFragmented(msg);
+  });
+
+  cmdParser.setManagers(&wifiManager);
+  bleManager.setCommandParser(&cmdParser);
   bleManager.begin();
+
   wifiManager.begin();
   wifiManager.tryReconnectLastWiFi();
   sensorManager.begin();
 
-  cmdParser.setManagers(&wifiManager);
-  bleManager.setCommandParser(&cmdParser);
-
   String mac = WiFi.macAddress();
   Serial.println("🆔 Dirección MAC del peluche: " + mac);
 
-  wsUrl = "ws://192.168.1.6:5002/ws/sensor-data?device=esp32&identifier=" + mac;
-
-  // Escuchar comandos entrantes por WebSocket
+  wsUrl = "ws://feelink-api.runasp.net/ws/sensor-data?device=esp32&identifier=" + mac;
   wsManager.setOnMessageCallback(handleWebSocketCommand);
 
   Serial.println("✅ PelucheSmart iniciado");
@@ -100,24 +107,22 @@ void loop() {
 
   bool wifiNow = wifiManager.isConnected();
 
+  // Reconexión WebSocket si cambia el estado
   if (wifiNow && !wasWiFiConnected) {
     Serial.println("🔌 Conectando al WebSocket...");
     wsManager.connect(wsUrl.c_str());
   }
   wasWiFiConnected = wifiNow;
 
-  if (!wifiManager.isScanning() && sendData) {
+  // Enviar datos de sensores solo si está conectado y permitido
+  if (!wifiManager.isScanning() && sendData && wifiNow && wsManager.isAvailable()) {
     SensorData data = sensorManager.read();
     checkSafetyLimits(data);
 
     String json = sensorManager.toJson(data, wifiNow);
-
     if (json.startsWith("{") && json.endsWith("}")) {
-      if (wifiNow && wsManager.isAvailable()) {
-        wsManager.send(json);
-      } else if (bleManager.isDeviceConnected() && wifiManager.isBLEOnly()) {
-        bleManager.sendFragmented(json);
-      }
+      wsManager.send(json);
+      Serial.println("📨 Datos de sensores enviados al backend.");
     } else {
       Serial.println("⚠️ JSON mal formado.");
     }

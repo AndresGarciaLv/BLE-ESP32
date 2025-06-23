@@ -9,7 +9,7 @@ struct SensorData {
   float ax, ay, az;
   float gx, gy, gz;
   int pressure;
-  int bpm;
+  int battery;  
 };
 
 class SensorManager {
@@ -24,6 +24,9 @@ private:
   int readFSRAveraged() const;
   int readPressurePercentage() const;
   float calculateGrams(int percentage) const;
+
+  float readBatteryVoltage() const;
+  int getBatteryPercent(float voltage) const;
 };
 
 #endif

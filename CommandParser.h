@@ -1,8 +1,9 @@
-#ifndef COMMAND_PARSER_H
-#define COMMAND_PARSER_H
+#ifndef COMMANDPARSER_H
+#define COMMANDPARSER_H
 
-#include <ArduinoJson.h>
-#include "WiFiManager.h"
+#include <Arduino.h>
+
+class WiFiManagerCustom;
 
 class CommandParser {
 public:

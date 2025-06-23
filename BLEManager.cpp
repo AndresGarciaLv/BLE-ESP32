@@ -1,13 +1,51 @@
 #include "BLEManager.h"
+#include "CommandParser.h"
+#include "mbedtls/base64.h"
+#include <ArduinoJson.h>
 
 class CharacteristicCallbacks : public BLECharacteristicCallbacks {
 public:
   CharacteristicCallbacks(CommandParser* parser) : parser(parser) {}
 
-  void onWrite(BLECharacteristic* c) override {
-    if (parser) {
-      parser->handleCommand(c->getValue().c_str());
+  String decodeBase64(const String& encoded) {
+    size_t outLen;
+    std::string input = encoded.c_str();
+    size_t inputLen = input.length();
+
+    size_t maxOutputLen = (inputLen * 3) / 4 + 1;
+    unsigned char* output = (unsigned char*)malloc(maxOutputLen);
+    if (!output) return "";
+
+    int ret = mbedtls_base64_decode(output, maxOutputLen, &outLen, (const unsigned char*)input.c_str(), inputLen);
+    if (ret != 0) {
+      free(output);
+      return "";
     }
+
+    String decoded = String((char*)output);
+    free(output);
+    return decoded;
+  }
+
+  void onWrite(BLECharacteristic* c) override {
+    Serial.println("🔡 BLE onWrite triggered");
+
+    String raw = c->getValue();
+    Serial.print("📉 Mensaje recibido por BLE: ");
+    Serial.println(raw);
+
+    String decoded = decodeBase64(raw);
+    String incoming = decoded.length() > 0 ? decoded : raw;
+
+    Serial.print("📨 Decodificado JSON: ");
+    Serial.println(incoming);
+
+    if (!parser) {
+      Serial.println("❌ Parser no inicializado.");
+      return;
+    }
+
+    parser->handleCommand(incoming);
   }
 
 private:
@@ -28,7 +66,6 @@ public:
     *deviceConnected = false;
     Serial.println("❌ BLE desconectado: esperando nuevo dispositivo...");
 
-    // Enviar estado BLE a la app si aún está permitido
     if (pCharacteristic) {
       String msg = "{\"bleStatus\":\"disconnected\"}";
       pCharacteristic->setValue(msg.c_str());
@@ -61,58 +98,53 @@ void BLEManager::begin() {
 
   service->start();
   BLEDevice::startAdvertising();
+
+  Serial.println("🔧 BLE inicializado y en espera de conexión.");
 }
 
 void BLEManager::sendFragmented(const String& message) {
-  if (!deviceConnected) {
-    Serial.println("⚠️ BLE desconectado, no se enviará fragmento.");
-    return;
-  }
+  if (!deviceConnected || !pCharacteristic) return;
 
-  const int maxPayloadSize = 17;
-  int index = 1;
-  int start = 0;
-  int len = message.length();
+  const int maxLength = 16;
+  int totalLength = message.length();
+  int parts = (totalLength + maxLength - 1) / maxLength;
 
-  Serial.println("========== JSON COMPLETO ==========");
-  Serial.println(message);
-  Serial.println("====================================");
-  Serial.println("== FRAGMENTANDO JSON PARA BLE =====");
+  for (int i = 0; i < parts; i++) {
+    String content = message.substring(i * maxLength, (i + 1) * maxLength);
+    String fragment = "#" + String(i + 1) + "|" + content;
 
-  while (start < len) {
-    // 🛑 Detener envío si se desconecta en medio del fragmentado
-    if (!deviceConnected) {
-      Serial.println("⛔ BLE se desconectó a mitad del envío. Abortando fragmentación.");
-      break;
-    }
-
-    int end = start + maxPayloadSize;
-    if (end > len) end = len;
-
-    while (end < len && message.charAt(end) != ',' && message.charAt(end) != '}') {
-      end--;
-      if (end <= start) break;
-    }
-
-    String payload = message.substring(start, end);
-    String fragment = "#" + String(index) + "|" + payload;
-
-    Serial.print("FRAGMENTO #");
-    Serial.print(index);
-    Serial.print(": ");
+    Serial.print("📤 Enviando fragmento: ");
     Serial.println(fragment);
 
     pCharacteristic->setValue(fragment.c_str());
     pCharacteristic->notify();
-    delay(100);
-
-    start = end;
-    index++;
+    delay(80);
   }
 
-  Serial.println("========= FRAGMENTACIÓN LISTA =======");
+  Serial.println("📤 Enviando fragmento final: #END");
+  pCharacteristic->setValue("#END");
+  pCharacteristic->notify();
 }
 
+void BLEManager::notifyWiFiStatus(bool connected, const String& ssid) {
+  if (!deviceConnected || !pCharacteristic) return;
+
+  StaticJsonDocument<128> doc;
+  JsonObject status = doc.createNestedObject("wifiStatus");
+  status["connected"] = connected;
+  if (connected) {
+    doc["ssid"] = ssid;
+  }
+
+  String json;
+  serializeJson(doc, json);
+
+  Serial.print("📶 Notificando estado WiFi: ");
+  Serial.println(json);
+
+  pCharacteristic->setValue(json.c_str());
+  pCharacteristic->notify();
+}
 
 void BLEManager::setCommandParser(CommandParser* parser) {
   this->commandParser = parser;
